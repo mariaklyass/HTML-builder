@@ -1,90 +1,104 @@
-//1, 2. Import all required modules (and define paths)
-const fs = require('fs');
+const fs = require('fs').promises;
 const path = require('path');
-//where to put bundle
-const projectDistPath = path.join(__dirname, 'project-dist');
-//where to put index.html
-const finalHTML = path.join(__dirname, 'project-dist', 'index.html');
-//where is the template
-const templatePath = path.join(__dirname, 'template.html');
-//where are all html contents
-const componentsPath = path.join(__dirname, 'components');
 
-if (!fs.existsSync(projectDistPath)) {
-  fs.mkdirSync(projectDistPath);
+const projectDistPath = path.join(__dirname, 'project-dist');
+const finalHTML = path.join(projectDistPath, 'index.html');
+const templatePath = path.join(__dirname, 'template.html');
+const componentsPath = path.join(__dirname, 'components');
+const stylesFolderPath = path.join(__dirname, 'styles');
+const finalStylesPath = path.join(projectDistPath, 'style.css');
+const assetsPath = path.join(__dirname, 'assets');
+const finalAssetsPath = path.join(projectDistPath, 'assets');
+
+async function createDirectory(directoryPath) {
+  try {
+    await fs.mkdir(directoryPath, { recursive: true });
+  } catch (error) {
+    console.error(`Error creating directory ${directoryPath}:`, error.message);
+  }
 }
 
-// 3. Find all tag names in the template file
-let templateContent = fs.readFileSync(templatePath, 'utf-8');
-const tagNames = templateContent
-  .match(/{{(.*?)}}/g)
-  .map((tag) => tag.replace(/[{}]/g, '').trim());
-//find matching files
-const matchingFiles = tagNames.map((tag) => {
-  const filePath = path.join(componentsPath, `${tag}.html`);
-  return fs.existsSync(filePath) ? filePath : null;
-});
-// 4. Replace template tags with the contents of component files
-matchingFiles.forEach((filePath, index) => {
-  if (filePath) {
-    const componentContent = fs.readFileSync(filePath, 'utf-8');
-    const tagRegex = new RegExp(`{{${tagNames[index]}}}`, 'g');
-    templateContent = templateContent.replace(tagRegex, componentContent);
-  }
-});
-// 5. Write the modified template to the index.html file in the project-dist folder
-fs.writeFileSync(finalHTML, templateContent);
-
-//6. Use the existing script from task 05-merge-styles to create the style.css file
-const stylesFolderPath = path.join(__dirname, 'styles');
-const finalStylesPath = path.join(__dirname, 'project-dist', 'style.css');
-
-fs.readdir(stylesFolderPath, (err, files) => {
-  if (err) {
-    console.error('Error reading styles folder:', err);
-    return;
-  }
-
-  const cssFiles = files.filter(
-    (file) => path.extname(file).toLowerCase() === '.css',
-  );
-
-  const stylesArray = [];
-  cssFiles.forEach((cssFile) => {
-    const filePath = path.join(stylesFolderPath, cssFile);
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
-    stylesArray.push(fileContent);
-  });
-
-  const bundleContent = stylesArray.join('\n');
-  fs.writeFileSync(finalStylesPath, bundleContent, 'utf-8');
-  console.log('Style bundle created successfully:', finalStylesPath);
-});
-
-// 7. Use the script from task 04-copy-directory to move the assets folder into the project-dist folder
-
-const assetsPath = path.join(__dirname, 'assets');
-const finalAssetsPath = path.join(__dirname, 'project-dist', 'assets');
-
-async function copyDir(srcPath, dest) {
+async function readAndReplaceTemplate(templatePath, componentsPath) {
   try {
-    await fs.promises.mkdir(dest, { recursive: true });
+    let templateContent = await fs.readFile(templatePath, 'utf-8');
+    const tagNames = templateContent
+      .match(/{{(.*?)}}/g)
+      .map((tag) => tag.replace(/[{}]/g, '').trim());
 
-    const files = await fs.promises.readdir(srcPath);
-    for (const file of files) {
-      const sourceFilePath = path.join(srcPath, file);
-      const destinationFilePath = path.join(dest, file);
+    const matchingFiles = await Promise.all(
+      tagNames.map(async (tag) => {
+        const filePath = path.join(componentsPath, `${tag}.html`);
+        return await fs
+          .access(filePath)
+          .then(() => filePath)
+          .catch(() => null);
+      }),
+    );
 
-      const stats = await fs.promises.stat(sourceFilePath);
-      if (stats.isDirectory()) {
-        await copyDir(sourceFilePath, destinationFilePath);
-      } else {
-        await fs.promises.copyFile(sourceFilePath, destinationFilePath);
-      }
-    }
+    await Promise.all(
+      matchingFiles.filter(Boolean).map(async (filePath, index) => {
+        const componentContent = await fs.readFile(filePath, 'utf-8');
+        const tagRegex = new RegExp(`{{${tagNames[index]}}}`, 'g');
+        templateContent = templateContent.replace(tagRegex, componentContent);
+      }),
+    );
+
+    await fs.writeFile(finalHTML, templateContent);
+  } catch (error) {
+    console.error('Error reading and replacing template:', error.message);
+  }
+}
+
+async function mergeStyles(stylesFolderPath, finalStylesPath) {
+  try {
+    const files = await fs.readdir(stylesFolderPath);
+    const cssFiles = files.filter(
+      (file) => path.extname(file).toLowerCase() === '.css',
+    );
+
+    const stylesArray = await Promise.all(
+      cssFiles.map(async (cssFile) => {
+        const filePath = path.join(stylesFolderPath, cssFile);
+        return await fs.readFile(filePath, 'utf-8');
+      }),
+    );
+
+    const bundleContent = stylesArray.join('\n');
+    await fs.writeFile(finalStylesPath, bundleContent, 'utf-8');
+    console.log('Style bundle created successfully:', finalStylesPath);
+  } catch (error) {
+    console.error('Error merging styles:', error.message);
+  }
+}
+
+async function copyDirectory(srcPath, dest) {
+  try {
+    await createDirectory(dest);
+
+    const files = await fs.readdir(srcPath);
+    await Promise.all(
+      files.map(async (file) => {
+        const sourceFilePath = path.join(srcPath, file);
+        const destinationFilePath = path.join(dest, file);
+        const stats = await fs.stat(sourceFilePath);
+
+        if (stats.isDirectory()) {
+          await copyDirectory(sourceFilePath, destinationFilePath);
+        } else {
+          await fs.copyFile(sourceFilePath, destinationFilePath);
+        }
+      }),
+    );
   } catch (error) {
     console.error('Error copying directory:', error.message);
   }
 }
 
-copyDir(assetsPath, finalAssetsPath);
+async function main() {
+  await createDirectory(projectDistPath);
+  await readAndReplaceTemplate(templatePath, componentsPath);
+  await mergeStyles(stylesFolderPath, finalStylesPath);
+  await copyDirectory(assetsPath, finalAssetsPath);
+}
+
+main();
