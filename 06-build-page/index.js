@@ -63,4 +63,28 @@ fs.readdir(stylesFolderPath, (err, files) => {
 
 // 7. Use the script from task 04-copy-directory to move the assets folder into the project-dist folder
 
-//*to be done*
+const assetsPath = path.join(__dirname, 'assets');
+const finalAssetsPath = path.join(__dirname, 'project-dist', 'assets');
+
+async function copyDir(srcPath, dest) {
+  try {
+    await fs.promises.mkdir(dest, { recursive: true });
+
+    const files = await fs.promises.readdir(srcPath);
+    for (const file of files) {
+      const sourceFilePath = path.join(srcPath, file);
+      const destinationFilePath = path.join(dest, file);
+
+      const stats = await fs.promises.stat(sourceFilePath);
+      if (stats.isDirectory()) {
+        await copyDir(sourceFilePath, destinationFilePath);
+      } else {
+        await fs.promises.copyFile(sourceFilePath, destinationFilePath);
+      }
+    }
+  } catch (error) {
+    console.error('Error copying directory:', error.message);
+  }
+}
+
+copyDir(assetsPath, finalAssetsPath);
