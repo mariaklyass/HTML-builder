@@ -23,7 +23,7 @@ rl.on('line', (input) => {
 });
 
 process.on('SIGINT', () => {
-  console.log('/nThank you for your input and goodbye!');
+  console.log('\nThank you for your input and goodbye!');
   writableStream.end();
   rl.close();
   process.exit();
