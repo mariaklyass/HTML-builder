@@ -15,6 +15,17 @@ async function copyDir() {
 
       await fs.copyFile(sourceFilePath, destinationFilePath);
     }
+
+    const destinationFiles = await fs.readdir(destinationFolder);
+
+    for (const destFile of destinationFiles) {
+      const sourceFileExists = files.includes(destFile);
+
+      if (!sourceFileExists) {
+        const filePathToDelete = path.join(destinationFolder, destFile);
+        await fs.unlink(filePathToDelete);
+      }
+    }
   } catch (error) {
     console.error('Error copying directory:', error.message);
   }
